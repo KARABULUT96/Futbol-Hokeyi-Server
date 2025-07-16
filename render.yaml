@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: Futbol-Hokeyi-Server
+    runtime: node
+    repo: https://github.com/KARABULUT96/Futbol-Hokeyi-Server
+    plan: free
+    region: oregon
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeployTrigger: commit
+version: "1"
