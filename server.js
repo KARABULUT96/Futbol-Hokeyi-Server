@@ -1,42 +1,73 @@
-const socket = io("https://futbol-hokeyi-server.onrender.com");
+// server.js
 
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
+const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
+const cors = require("cors");
 
-let playerId = null;
+const app = express();
+const server = http.createServer(app);
+
+const io = new Server(server, {
+  cors: {
+    origin: "*", // Gerekirse sadece Netlify adresini yazarsın
+    methods: ["GET", "POST"],
+  },
+});
+
 let players = {};
-let ball = { x: 400, y: 250 };
+let ball = { x: 300, y: 200, vx: 0, vy: 0 };
 
-document.addEventListener("keydown", (e) => {
-  if (playerId) {
-    socket.emit("move", { playerId, key: e.key });
-  }
+io.on("connection", (socket) => {
+  console.log("Bir oyuncu bağlandı:", socket.id);
+
+  // Yeni oyuncu bilgisi ekle
+  players[socket.id] = {
+    x: 100 + Math.random() * 400,
+    y: 100 + Math.random() * 200,
+  };
+
+  // Yeni bağlanan oyuncuya mevcut oyuncuları ve topu gönder
+  socket.emit("currentState", {
+    players,
+    ball,
+  });
+
+  // Diğer oyunculara yeni oyuncuyu bildir
+  socket.broadcast.emit("newPlayer", {
+    id: socket.id,
+    x: players[socket.id].x,
+    y: players[socket.id].y,
+  });
+
+  // Oyuncu hareket ettiğinde
+  socket.on("move", (data) => {
+    if (players[socket.id]) {
+      players[socket.id].x = data.x;
+      players[socket.id].y = data.y;
+      socket.broadcast.emit("playerMoved", {
+        id: socket.id,
+        x: data.x,
+        y: data.y,
+      });
+    }
+  });
+
+  // Topun hareketi (sadece 1 oyuncu gönderecek bu bilgiyi)
+  socket.on("ballUpdate", (data) => {
+    ball = data;
+    socket.broadcast.emit("ballUpdate", ball);
+  });
+
+  // Oyuncu bağlantısı kesildiğinde
+  socket.on("disconnect", () => {
+    console.log("Oyuncu ayrıldı:", socket.id);
+    delete players[socket.id];
+    socket.broadcast.emit("playerDisconnected", socket.id);
+  });
 });
 
-socket.on("init", (data) => {
-  playerId = data.playerId;
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`Sunucu ${PORT} portunda çalışıyor`);
 });
-
-socket.on("state", (gameState) => {
-  players = gameState.players;
-  ball = gameState.ball;
-  draw();
-});
-
-function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // Topu çiz
-  ctx.beginPath();
-  ctx.arc(ball.x, ball.y, 10, 0, Math.PI * 2);
-  ctx.fillStyle = "black";
-  ctx.fill();
-  ctx.closePath();
-
-  // Oyuncuları çiz
-  for (const id in players) {
-    const p = players[id];
-    ctx.fillStyle = p.color || "blue";
-    ctx.fillRect(p.x, p.y, 40, 40);
-  }
-}
